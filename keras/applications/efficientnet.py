@@ -296,11 +296,8 @@ def EfficientNet(
   if input_tensor is None:
     img_input = layers.Input(shape=input_shape)
   else:
-    if not backend.is_keras_tensor(input_tensor):
-      img_input = layers.Input(tensor=input_tensor, shape=input_shape)
-    else:
-      img_input = input_tensor
-
+    img_input = (input_tensor if backend.is_keras_tensor(input_tensor) else
+                 layers.Input(tensor=input_tensor, shape=input_shape))
   bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
   def round_filters(filters, divisor=depth_divisor):
@@ -455,10 +452,10 @@ def block(inputs,
         padding='same',
         use_bias=False,
         kernel_initializer=CONV_KERNEL_INITIALIZER,
-        name=name + 'expand_conv')(
-            inputs)
-    x = layers.BatchNormalization(axis=bn_axis, name=name + 'expand_bn')(x)
-    x = layers.Activation(activation, name=name + 'expand_activation')(x)
+        name=f'{name}expand_conv',
+    )(inputs)
+    x = layers.BatchNormalization(axis=bn_axis, name=f'{name}expand_bn')(x)
+    x = layers.Activation(activation, name=f'{name}expand_activation')(x)
   else:
     x = inputs
 
@@ -466,7 +463,8 @@ def block(inputs,
   if strides == 2:
     x = layers.ZeroPadding2D(
         padding=imagenet_utils.correct_pad(x, kernel_size),
-        name=name + 'dwconv_pad')(x)
+        name=f'{name}dwconv_pad',
+    )(x)
     conv_pad = 'valid'
   else:
     conv_pad = 'same'
@@ -476,35 +474,34 @@ def block(inputs,
       padding=conv_pad,
       use_bias=False,
       depthwise_initializer=CONV_KERNEL_INITIALIZER,
-      name=name + 'dwconv')(x)
-  x = layers.BatchNormalization(axis=bn_axis, name=name + 'bn')(x)
-  x = layers.Activation(activation, name=name + 'activation')(x)
+      name=f'{name}dwconv',
+  )(x)
+  x = layers.BatchNormalization(axis=bn_axis, name=f'{name}bn')(x)
+  x = layers.Activation(activation, name=f'{name}activation')(x)
 
   # Squeeze and Excitation phase
   if 0 < se_ratio <= 1:
     filters_se = max(1, int(filters_in * se_ratio))
-    se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
-    if bn_axis == 1:
-      se_shape = (filters, 1, 1)
-    else:
-      se_shape = (1, 1, filters)
-    se = layers.Reshape(se_shape, name=name + 'se_reshape')(se)
+    se = layers.GlobalAveragePooling2D(name=f'{name}se_squeeze')(x)
+    se_shape = (filters, 1, 1) if bn_axis == 1 else (1, 1, filters)
+    se = layers.Reshape(se_shape, name=f'{name}se_reshape')(se)
     se = layers.Conv2D(
         filters_se,
         1,
         padding='same',
         activation=activation,
         kernel_initializer=CONV_KERNEL_INITIALIZER,
-        name=name + 'se_reduce')(
-            se)
+        name=f'{name}se_reduce',
+    )(se)
     se = layers.Conv2D(
         filters,
         1,
         padding='same',
         activation='sigmoid',
         kernel_initializer=CONV_KERNEL_INITIALIZER,
-        name=name + 'se_expand')(se)
-    x = layers.multiply([x, se], name=name + 'se_excite')
+        name=f'{name}se_expand',
+    )(se)
+    x = layers.multiply([x, se], name=f'{name}se_excite')
 
   # Output phase
   x = layers.Conv2D(
@@ -513,13 +510,14 @@ def block(inputs,
       padding='same',
       use_bias=False,
       kernel_initializer=CONV_KERNEL_INITIALIZER,
-      name=name + 'project_conv')(x)
-  x = layers.BatchNormalization(axis=bn_axis, name=name + 'project_bn')(x)
+      name=f'{name}project_conv',
+  )(x)
+  x = layers.BatchNormalization(axis=bn_axis, name=f'{name}project_bn')(x)
   if id_skip and strides == 1 and filters_in == filters_out:
     if drop_rate > 0:
       x = layers.Dropout(
-          drop_rate, noise_shape=(None, 1, 1, 1), name=name + 'drop')(x)
-    x = layers.add([x, inputs], name=name + 'add')
+          drop_rate, noise_shape=(None, 1, 1, 1), name=f'{name}drop')(x)
+    x = layers.add([x, inputs], name=f'{name}add')
   return x
 
 

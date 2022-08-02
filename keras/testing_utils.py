@@ -142,16 +142,9 @@ def layer_test(layer_cls,
     expected_output_dtype = input_dtype
 
   if tf.as_dtype(expected_output_dtype) == tf.string:
-    if test_harness:
-      assert_equal = test_harness.assertAllEqual
-    else:
-      assert_equal = string_test
+    assert_equal = test_harness.assertAllEqual if test_harness else string_test
   else:
-    if test_harness:
-      assert_equal = test_harness.assertAllClose
-    else:
-      assert_equal = numeric_test
-
+    assert_equal = test_harness.assertAllClose if test_harness else numeric_test
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
@@ -271,17 +264,16 @@ def layer_test(layer_cls,
   actual_output_shape = actual_output.shape
   for expected_dim, actual_dim in zip(computed_output_shape,
                                       actual_output_shape):
-    if expected_dim is not None:
-      if expected_dim != actual_dim:
-        raise AssertionError(
-            'When testing layer %s **after deserialization**, '
-            'for input %s, found output_shape='
-            '%s but expected to find inferred shape %s.\nFull kwargs: %s' %
-            (layer_cls.__name__,
-             x,
-             actual_output_shape,
-             computed_output_shape,
-             kwargs))
+    if expected_dim is not None and expected_dim != actual_dim:
+      raise AssertionError(
+          'When testing layer %s **after deserialization**, '
+          'for input %s, found output_shape='
+          '%s but expected to find inferred shape %s.\nFull kwargs: %s' %
+          (layer_cls.__name__,
+           x,
+           actual_output_shape,
+           computed_output_shape,
+           kwargs))
   if expected_output is not None:
     assert_equal(actual_output, expected_output)
 
@@ -500,7 +492,7 @@ def get_small_mlp(num_hidden, num_classes, input_dim):
     return get_small_sequential_mlp(num_hidden, num_classes, input_dim)
   if model_type == 'functional':
     return get_small_functional_mlp(num_hidden, num_classes, input_dim)
-  raise ValueError('Unknown model type {}'.format(model_type))
+  raise ValueError(f'Unknown model type {model_type}')
 
 
 class _SubclassModel(models.Model):
@@ -529,7 +521,7 @@ class _SubclassModel(models.Model):
       self._set_inputs(inputs)
 
   def _layer_name_for_i(self, i):
-    return 'layer{}'.format(i)
+    return f'layer{i}'
 
   def call(self, inputs, **kwargs):
     x = inputs
@@ -548,9 +540,7 @@ class _SubclassModelCustomBuild(models.Model):
     self._layer_generating_func = layer_generating_func
 
   def build(self, input_shape):
-    model_layers = []
-    for layer in self._layer_generating_func():
-      model_layers.append(layer)
+    model_layers = list(self._layer_generating_func())
     self.all_layers = model_layers
 
   def call(self, inputs, **kwargs):
@@ -625,7 +615,7 @@ def get_model_from_layers(model_layers,
       outputs = layer(outputs)
     return models.Model(inputs, outputs, name=name)
 
-  raise ValueError('Unknown model type {}'.format(model_type))
+  raise ValueError(f'Unknown model type {model_type}')
 
 
 class Bias(layers.Layer):
@@ -849,7 +839,7 @@ def get_multi_io_model(
 
     return models.Model(inputs, outputs)
 
-  raise ValueError('Unknown model type {}'.format(model_type))
+  raise ValueError(f'Unknown model type {model_type}')
 
 
 _V2_OPTIMIZER_MAP = {
@@ -884,15 +874,15 @@ def get_v2_optimizer(name, **kwargs):
     return _V2_OPTIMIZER_MAP[name](**kwargs)
   except KeyError:
     raise ValueError(
-        'Could not find requested v2 optimizer: {}\nValid choices: {}'.format(
-            name, list(_V2_OPTIMIZER_MAP.keys())))
+        f'Could not find requested v2 optimizer: {name}\nValid choices: {list(_V2_OPTIMIZER_MAP.keys())}'
+    )
 
 
 def get_expected_metric_variable_names(var_names, name_suffix=''):
   """Returns expected metric variable names given names and prefix/suffix."""
   if tf.__internal__.tf2.enabled() or tf.executing_eagerly():
     # In V1 eager mode and V2 variable names are not made unique.
-    return [n + ':0' for n in var_names]
+    return [f'{n}:0' for n in var_names]
   # In V1 graph mode variable names are made unique using a suffix.
   return [n + name_suffix + ':0' for n in var_names]
 
@@ -1035,10 +1025,7 @@ def run_v2_only(func=None):
 
     return decorated
 
-  if func is not None:
-    return decorator(func)
-
-  return decorator
+  return decorator(func) if func is not None else decorator
 
 
 def generate_combinations_with_testcase_name(**kwargs):
@@ -1070,13 +1057,11 @@ def generate_combinations_with_testcase_name(**kwargs):
   for combination in combinations:
     assert isinstance(combination, collections.OrderedDict)
     name = ''.join([
-        '_{}_{}'.format(''.join(filter(str.isalnum, key)),
-                        ''.join(filter(str.isalnum, str(value))))
+        f"_{''.join(filter(str.isalnum, key))}_{''.join(filter(str.isalnum, str(value)))}"
         for key, value in combination.items()
     ])
     named_combinations.append(
         collections.OrderedDict(
-            list(combination.items()) +
-            [('testcase_name', '_test{}'.format(name))]))
+            (list(combination.items()) + [('testcase_name', f'_test{name}')])))
 
   return named_combinations

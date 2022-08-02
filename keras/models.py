@@ -178,8 +178,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
       # from a Keras layer.
       if not backend.is_keras_tensor(input_tensor):
         name = original_input_layer.name
-        input_tensor = Input(tensor=input_tensor,
-                             name='input_wrapper_for_' + name)
+        input_tensor = Input(tensor=input_tensor, name=f'input_wrapper_for_{name}')
         newly_created_input_layer = input_tensor._keras_history.layer
         new_input_layers[original_input_layer] = newly_created_input_layer
       else:
@@ -198,14 +197,9 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
                                          created_layers=created_layers))
   metrics_names = model.metrics_names
   model = Model(input_tensors, output_tensors, name=model.name)
-  # Layers not directly tied to outputs of the Model, such as loss layers
-  # created in `add_loss` and `add_metric`.
-  ancillary_layers = [
+  if ancillary_layers := [
       layer for layer in created_layers.values() if layer not in model.layers
-  ]
-  # TODO(b/162887610): This may need to adjust the inbound node index if the
-  # created layers had already been used to define other models.
-  if ancillary_layers:
+  ]:
     new_nodes = tf.nest.flatten([
         layer.inbound_nodes[1:]
         if functional._should_skip_first_node(layer)
@@ -271,9 +265,8 @@ def _remove_ancillary_layers(model, layer_map, layers):
   depths = [depth for depth in model._nodes_by_depth.keys() if depth < 0]
   depths.sort(reverse=True)  # Order topologically from inputs to outputs.
   for depth in depths:
-    for node in model._nodes_by_depth[depth]:
-      ancillary_layers.append(layer_map[node.outbound_layer])
-
+    ancillary_layers.extend(layer_map[node.outbound_layer]
+                            for node in model._nodes_by_depth[depth])
   return [l for l in layers if l not in ancillary_layers], ancillary_layers
 
 
@@ -355,7 +348,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
                          'Use the Functional API instead. '
                          f'Received: input_tensors={input_tensors}')
     else:
-      input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
+      input_tensor = Input(tensor=x, name=f'input_wrapper_for_{str(x.name)}')
       input_layer = input_tensor._keras_history.layer
       cloned_model = Sequential(layers=[input_layer] + layers, name=model.name)
 
@@ -487,7 +480,7 @@ def _in_place_subclassed_model_reset(model):
   attributes_cache = {}
   for name in dir(model):
     # Skip attrs that track other trackables.
-    if name == 'submodules' or name == '_self_tracked_trackables':
+    if name in ['submodules', '_self_tracked_trackables']:
       continue
 
     try:
@@ -534,25 +527,24 @@ def _in_place_subclassed_model_reset(model):
     model._self_tracked_trackables.append(fresh_layer)
 
   # Cache original model build attributes (in addition to layers)
-  if (not hasattr(model, '_original_attributes_cache') or
-      model._original_attributes_cache is None):
-    if model.built:
-      attributes_to_cache = [
-          'inputs',
-          'outputs',
-          'total_loss',
-          'optimizer',
-          'train_function',
-          'test_function',
-          'predict_function',
-          '_training_endpoints',
-          '_collected_trainable_weights',
-          '_feed_inputs',
-          '_feed_input_names',
-          '_feed_input_shapes',
-      ]
-      for name in attributes_to_cache:
-        attributes_cache[name] = getattr(model, name)
+  if ((not hasattr(model, '_original_attributes_cache')
+       or model._original_attributes_cache is None)) and model.built:
+    attributes_to_cache = [
+        'inputs',
+        'outputs',
+        'total_loss',
+        'optimizer',
+        'train_function',
+        'test_function',
+        'predict_function',
+        '_training_endpoints',
+        '_collected_trainable_weights',
+        '_feed_inputs',
+        '_feed_input_names',
+        '_feed_input_shapes',
+    ]
+    for name in attributes_to_cache:
+      attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
   _reset_build_compile_trackers(model)
   model._setattr_tracking = setattr_tracking

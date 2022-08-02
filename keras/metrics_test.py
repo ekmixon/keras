@@ -1961,9 +1961,7 @@ class BinaryTruePositivesViaControlFlow(metrics.Metric):
             self.true_positives.assign_add(sample_weight[i][0])
 
   def result(self):
-    if tf.constant(True):
-      return self.true_positives
-    return 0.0
+    return self.true_positives if tf.constant(True) else 0.0
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

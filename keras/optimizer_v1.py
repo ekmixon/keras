@@ -45,7 +45,7 @@ class Optimizer:
                         'passed to optimizer: ' + str(k))
       # checks that clipnorm >= 0 and clipvalue >= 0
       if kwargs[k] < 0:
-        raise ValueError('Expected {} >= 0, received: {}'.format(k, kwargs[k]))
+        raise ValueError(f'Expected {k} >= 0, received: {kwargs[k]}')
     self.__dict__.update(kwargs)
     self.updates = []
     self.weights = []
@@ -123,9 +123,9 @@ class Optimizer:
     param_values = backend.batch_get_value(params)
     for pv, p, w in zip(param_values, params, weights):
       if pv.shape != w.shape:
-        raise ValueError('Optimizer weight shape ' + str(pv.shape) +
-                         ' not compatible with '
-                         'provided weight shape ' + str(w.shape))
+        raise ValueError(
+            (f'Optimizer weight shape {str(pv.shape)}' + ' not compatible with '
+             'provided weight shape ') + str(w.shape))
       weight_value_tuples.append((p, w))
     backend.batch_set_value(weight_value_tuples)
 
@@ -197,11 +197,7 @@ class SGD(Optimizer):
       v = self.momentum * m - lr * g  # velocity
       self.updates.append(tf.compat.v1.assign(m, v))
 
-      if self.nesterov:
-        new_p = p + self.momentum * v - lr * g
-      else:
-        new_p = p + v
-
+      new_p = p + self.momentum * v - lr * g if self.nesterov else p + v
       # Apply constraints.
       if getattr(p, 'constraint', None) is not None:
         new_p = p.constraint(new_p)
@@ -785,8 +781,7 @@ class TFOptimizer(Optimizer, tf.__internal__.tracking.Trackable):
         if callable(var_list):
           var_list = var_list()
 
-    var_list = tf.nest.flatten(var_list)
-    if var_list:
+    if var_list := tf.nest.flatten(var_list):
       grads = tape.gradient(loss, var_list, grad_loss)
       grads_and_vars = list(zip(grads, var_list))
       self.apply_gradients(grads_and_vars)
@@ -801,13 +796,8 @@ class TFOptimizer(Optimizer, tf.__internal__.tracking.Trackable):
     if tf.distribute.has_strategy():
       self.updates = []
 
-      if not params:
-        # After the model vars have been created, the second call to get_updates
-        # is called with params as an empty list. This ensures that we call
-        # compute_gradients with params=None.
-        grads = self.optimizer.compute_gradients(loss)
-      else:
-        grads = self.optimizer.compute_gradients(loss, params)
+      grads = (self.optimizer.compute_gradients(loss, params)
+               if params else self.optimizer.compute_gradients(loss))
       global_step = tf.compat.v1.train.get_global_step()
       opt_update = self.optimizer.apply_gradients(grads, global_step)
     else:

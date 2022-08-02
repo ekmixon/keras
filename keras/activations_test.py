@@ -157,9 +157,9 @@ class KerasActivationsTest(tf.test.TestCase, parameterized.TestCase):
     def ref_sigmoid(x):
       if x >= 0:
         return 1 / (1 + np.exp(-x))
-      else:
-        z = np.exp(x)
-        return z / (1 + z)
+      z = np.exp(x)
+      return z / (1 + z)
+
     sigmoid = np.vectorize(ref_sigmoid)
 
     x = backend.placeholder(ndim=2)
@@ -200,9 +200,8 @@ class KerasActivationsTest(tf.test.TestCase, parameterized.TestCase):
       if approximate:
         return 0.5 * x * (1.0 + np.tanh(
             np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3))))
-      else:
-        from scipy.stats import norm  # pylint: disable=g-import-not-at-top
-        return x * norm.cdf(x)
+      from scipy.stats import norm  # pylint: disable=g-import-not-at-top
+      return x * norm.cdf(x)
 
     x = backend.placeholder(ndim=2)
     f = backend.function([x], [activations.gelu(x)])

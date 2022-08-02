@@ -142,8 +142,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.expected_fit_result_with_weights = {
         'output_1_mean_squared_error': [11, 11],
         'output_2_mean_squared_error': [44, 44],
-        'output_1_' + self.wmse: [14, 14],
-        'output_2_' + self.wmse: [40, 40],
+        f'output_1_{self.wmse}': [14, 14],
+        f'output_2_{self.wmse}': [40, 40],
         'loss': [144, 144],
         'output_1_loss': [56, 56],
         'output_2_loss': [88, 88],
@@ -152,8 +152,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.expected_fit_result_with_weights_output_2 = {
         'output_1_mean_squared_error': [11, 11],
         'output_2_mean_squared_error': [44, 44],
-        'output_1_' + self.wmse: [11, 11],
-        'output_2_' + self.wmse: [40, 40],
+        f'output_1_{self.wmse}': [11, 11],
+        f'output_2_{self.wmse}': [40, 40],
         'loss': [99, 99],
         'output_1_loss': [11, 11],
         'output_2_loss': [88, 88],
@@ -162,8 +162,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.expected_fit_result = {
         'output_1_mean_squared_error': [11, 11],
         'output_2_mean_squared_error': [44, 44],
-        'output_1_' + self.wmse: [11, 11],
-        'output_2_' + self.wmse: [44, 44],
+        f'output_1_{self.wmse}': [11, 11],
+        f'output_2_{self.wmse}': [44, 44],
         'loss': [55, 55],
         'output_1_loss': [11, 11],
         'output_2_loss': [44, 44],
@@ -378,9 +378,7 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     self.x = np.asarray([[1.], [2.], [3.], [4.]])
     self.y = np.asarray([[2.], [4.], [6.], [8.]])
     self.sample_weight = np.asarray([2., 3., 4., 5.])
-    self.class_weight = {i: 1 for i in range(10)}
-    self.class_weight.update({2: 2, 4: 3, 6: 4, 8: 5})
-
+    self.class_weight = {i: 1 for i in range(10)} | {2: 2, 4: 3, 6: 4, 8: 5}
     # y_true = [[2.], [4.], [6.], [8.]], y_pred = [[3.], [6.], [9.], [12.]]
 
     # Metric:

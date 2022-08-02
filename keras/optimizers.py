@@ -118,7 +118,6 @@ def get(identifier):
   """
   if isinstance(identifier, (Optimizer, optimizer_v2.OptimizerV2)):
     return identifier
-  # Wrap legacy TF optimizer instances
   elif isinstance(identifier, tf.compat.v1.train.Optimizer):
     opt = TFOptimizer(identifier)
     backend.track_tf_optimizer(opt)
@@ -129,5 +128,4 @@ def get(identifier):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
   else:
-    raise ValueError(
-        'Could not interpret optimizer identifier: {}'.format(identifier))
+    raise ValueError(f'Could not interpret optimizer identifier: {identifier}')

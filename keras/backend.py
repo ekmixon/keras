@@ -379,10 +379,9 @@ def symbolic_learning_phase():
 def _default_learning_phase():
   if tf.executing_eagerly():
     return 0
-  else:
-    with name_scope(''):
-      return tf.compat.v1.placeholder_with_default(
-          False, shape=(), name='keras_learning_phase')
+  with name_scope(''):
+    return tf.compat.v1.placeholder_with_default(
+        False, shape=(), name='keras_learning_phase')
 
 
 @keras_export('keras.backend.set_learning_phase')
@@ -578,9 +577,7 @@ def _as_graph_element(obj):
         otherwise `None`.
   """
   conv_fn = getattr(obj, '_as_graph_element', None)
-  if conv_fn and callable(conv_fn):
-    return conv_fn()
-  return None
+  return conv_fn() if conv_fn and callable(conv_fn) else None
 
 
 def _assert_same_graph(original_item, item):
@@ -597,8 +594,8 @@ def _assert_same_graph(original_item, item):
   graph = getattr(item, 'graph', None)
   if original_graph and graph and original_graph is not graph:
     raise ValueError(
-        '%s must be from the same graph as %s (graphs are %s and %s).' %
-        (item, original_item, graph, original_graph))
+        f'{item} must be from the same graph as {original_item} (graphs are {graph} and {original_graph}).'
+    )
 
 
 def _current_graph(op_input_list, graph=None):
@@ -639,7 +636,7 @@ def _current_graph(op_input_list, graph=None):
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, tf.Graph):
-    raise TypeError('Input graph needs to be a Graph: %s' % (graph,))
+    raise TypeError(f'Input graph needs to be a Graph: {graph}')
 
   # 1. We validate that all of the inputs are from the same graph. This is
   #    either the supplied graph parameter, or the first one selected from one
@@ -666,7 +663,7 @@ def _current_graph(op_input_list, graph=None):
       elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
-        raise ValueError('%s is not from the passed-in graph.' % graph_element)
+        raise ValueError(f'{graph_element} is not from the passed-in graph.')
 
   # 2. If all else fails, we use the default graph, which is always there.
   return graph or current_default_graph
@@ -736,13 +733,12 @@ tf.__internal__.tracking.register_session_provider(get_session)
 
 
 def get_graph():
-  if tf.executing_eagerly():
-    global _GRAPH
-    if not getattr(_GRAPH, 'graph', None):
-      _GRAPH.graph = tf.__internal__.FuncGraph('keras_graph')
-    return _GRAPH.graph
-  else:
+  if not tf.executing_eagerly():
     return tf.compat.v1.get_default_graph()
+  global _GRAPH
+  if not getattr(_GRAPH, 'graph', None):
+    _GRAPH.graph = tf.__internal__.FuncGraph('keras_graph')
+  return _GRAPH.graph
 
 
 @tf_contextlib.contextmanager
@@ -985,10 +981,7 @@ def to_dense(tensor):
   False
 
   """
-  if is_sparse(tensor):
-    return tf.sparse.to_dense(tensor)
-  else:
-    return tensor
+  return tf.sparse.to_dense(tensor) if is_sparse(tensor) else tensor
 
 
 @keras_export('keras.backend.name_scope', v1=[])
@@ -1133,23 +1126,19 @@ def unique_object_name(name,
   if name_uid_map is None:
     name_uid_map = get_default_graph_uid_map()
   if avoid_names is None:
-    if avoid_observed_names:
-      avoid_names = OBSERVED_NAMES
-    else:
-      avoid_names = set()
+    avoid_names = OBSERVED_NAMES if avoid_observed_names else set()
   proposed_name = None
   while proposed_name is None or proposed_name in avoid_names:
     name_key = (namespace, name)
     if zero_based:
-      number = name_uid_map[name_key]
-      if number:
-        proposed_name = name + '_' + str(number)
+      if number := name_uid_map[name_key]:
+        proposed_name = f'{name}_{str(number)}'
       else:
         proposed_name = name
       name_uid_map[name_key] += 1
     else:
       name_uid_map[name_key] += 1
-      proposed_name = name + '_' + str(name_uid_map[name_key])
+      proposed_name = f'{name}_{str(name_uid_map[name_key])}'
   return proposed_name
 
 
@@ -1166,11 +1155,9 @@ def _get_variables(graph=None):
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
   variables = _get_variables(get_graph())
-  candidate_vars = []
-  for v in variables:
-    if not getattr(v, '_keras_initialized', False):
-      candidate_vars.append(v)
-  if candidate_vars:
+  if candidate_vars := [
+      v for v in variables if not getattr(v, '_keras_initialized', False)
+  ]:
     # This step is expensive, so we only run it on variables not already
     # marked as initialized.
     is_initialized = session.run(
@@ -1257,8 +1244,8 @@ def is_keras_tensor(x):
                     (tf.Tensor, tf.Variable,
                      tf.SparseTensor, tf.RaggedTensor,
                      keras_tensor.KerasTensor)):
-    raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
-                     '`. Expected a symbolic tensor instance.')
+    raise ValueError((f'Unexpectedly found an instance of type `{str(type(x))}'
+                      + '`. Expected a symbolic tensor instance.'))
   if tf.compat.v1.executing_eagerly_outside_functions():
     return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
@@ -1308,9 +1295,8 @@ def placeholder(shape=None,
     )
   if dtype is None:
     dtype = floatx()
-  if not shape:
-    if ndim:
-      shape = (None,) * ndim
+  if not shape and ndim:
+    shape = (None,) * ndim
   if tf.compat.v1.executing_eagerly_outside_functions():
     if sparse:
       spec = tf.SparseTensorSpec(
@@ -1372,11 +1358,10 @@ def is_placeholder(x):
     if tf.compat.v1.executing_eagerly_outside_functions():
       return hasattr(x, '_is_backend_placeholder')
     from keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
-    if tf_utils.is_extension_type(x):
-      flat_components = tf.nest.flatten(x, expand_composites=True)
-      return py_any(is_placeholder(c) for c in flat_components)
-    else:
+    if not tf_utils.is_extension_type(x):
       return x.op.type == 'Placeholder'
+    flat_components = tf.nest.flatten(x, expand_composites=True)
+    return py_any(is_placeholder(c) for c in flat_components)
   except AttributeError:
     return False
 
@@ -1574,9 +1559,7 @@ def zeros(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = tf.as_dtype(dtype)
     v = tf.zeros(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.shape.as_list()):
-      return variable(v, dtype=dtype, name=name)
-    return v
+    return variable(v, dtype=dtype, name=name) if py_all(v.shape.as_list()) else v
 
 
 @keras_export('keras.backend.ones')
@@ -1610,9 +1593,7 @@ def ones(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = tf.as_dtype(dtype)
     v = tf.ones(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.shape.as_list()):
-      return variable(v, dtype=dtype, name=name)
-    return v
+    return variable(v, dtype=dtype, name=name) if py_all(v.shape.as_list()) else v
 
 
 @keras_export('keras.backend.eye')
@@ -1789,9 +1770,7 @@ class RandomGenerator(tf.__internal__.tracking.AutoTrackable):
       A tensor with shape [2,].
     """
     self._maybe_init()
-    if self._generator:
-      return self._generator.make_seeds()[:, 0]
-    return None
+    return self._generator.make_seeds()[:, 0] if self._generator else None
 
   def make_legacy_seed(self):
     """Create a new seed for the legacy stateful ops to use.
@@ -2055,13 +2034,12 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  if tf.__internal__.tf2.enabled():
-    momentum = tf.cast(momentum, x.dtype)
-    value = tf.cast(value, x.dtype)
-    return x.assign(x * momentum + value * (1 - momentum))
-  else:
+  if not tf.__internal__.tf2.enabled():
     return tf.__internal__.train.assign_moving_average(
         x, value, momentum, zero_debias=True)
+  momentum = tf.cast(momentum, x.dtype)
+  value = tf.cast(value, x.dtype)
+  return x.assign(x * momentum + value * (1 - momentum))
 
 
 # LINEAR ALGEBRA
@@ -2106,33 +2084,29 @@ def dot(x, y):
   >>> tf.keras.backend.int_shape(xy)
   (2, 4, 5)
   """
-  if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
-    x_shape = []
-    for i, s in zip(int_shape(x), tf.unstack(tf.shape(x))):
-      if i is not None:
-        x_shape.append(i)
-      else:
-        x_shape.append(s)
-    x_shape = tuple(x_shape)
-    y_shape = []
-    for i, s in zip(int_shape(y), tf.unstack(tf.shape(y))):
-      if i is not None:
-        y_shape.append(i)
-      else:
-        y_shape.append(s)
-    y_shape = tuple(y_shape)
-    y_permute_dim = list(range(ndim(y)))
-    y_permute_dim = [y_permute_dim.pop(-2)] + y_permute_dim
-    xt = tf.reshape(x, [-1, x_shape[-1]])
-    yt = tf.reshape(
-        tf.compat.v1.transpose(y, perm=y_permute_dim), [y_shape[-2], -1])
-    return tf.reshape(
-        tf.matmul(xt, yt), x_shape[:-1] + y_shape[:-2] + y_shape[-1:])
-  if is_sparse(x):
-    out = tf.sparse.sparse_dense_matmul(x, y)
-  else:
-    out = tf.matmul(x, y)
-  return out
+  if ndim(x) is None or ndim(x) <= 2 and ndim(y) <= 2:
+    return tf.sparse.sparse_dense_matmul(x, y) if is_sparse(x) else tf.matmul(x, y)
+  x_shape = []
+  for i, s in zip(int_shape(x), tf.unstack(tf.shape(x))):
+    if i is not None:
+      x_shape.append(i)
+    else:
+      x_shape.append(s)
+  x_shape = tuple(x_shape)
+  y_shape = []
+  for i, s in zip(int_shape(y), tf.unstack(tf.shape(y))):
+    if i is not None:
+      y_shape.append(i)
+    else:
+      y_shape.append(s)
+  y_shape = tuple(y_shape)
+  y_permute_dim = list(range(ndim(y)))
+  y_permute_dim = [y_permute_dim.pop(-2)] + y_permute_dim
+  xt = tf.reshape(x, [-1, x_shape[-1]])
+  yt = tf.reshape(
+      tf.compat.v1.transpose(y, perm=y_permute_dim), [y_shape[-2], -1])
+  return tf.reshape(
+      tf.matmul(xt, yt), x_shape[:-1] + y_shape[:-2] + y_shape[-1:])
 
 
 @keras_export('keras.backend.batch_dot')
@@ -2198,22 +2172,18 @@ def batch_dot(x, y, axes=None):
   x_batch_size = x_shape[0]
   y_batch_size = y_shape[0]
 
-  if x_batch_size is not None and y_batch_size is not None:
-    if x_batch_size != y_batch_size:
-      raise ValueError('Cannot do batch_dot on inputs '
-                       'with different batch sizes. '
-                       'Received inputs with shapes ' +
-                       str(x_shape) + ' and ' +
-                       str(y_shape) + '.')
+  if (x_batch_size is not None and y_batch_size is not None
+      and x_batch_size != y_batch_size):
+    raise ValueError('Cannot do batch_dot on inputs '
+                     'with different batch sizes. '
+                     'Received inputs with shapes ' +
+                     str(x_shape) + ' and ' +
+                     str(y_shape) + '.')
   if isinstance(axes, int):
     axes = [axes, axes]
 
   if axes is None:
-    if y_ndim == 2:
-      axes = [x_ndim - 1, y_ndim - 1]
-    else:
-      axes = [x_ndim - 1, y_ndim - 2]
-
+    axes = [x_ndim - 1, y_ndim - 1] if y_ndim == 2 else [x_ndim - 1, y_ndim - 2]
   if py_any(isinstance(a, (list, tuple)) for a in axes):
     raise ValueError('Multiple target dimensions are not supported. ' +
                      'Expected: None, int, (int, int), ' +
@@ -2809,10 +2779,9 @@ def clip(x, min_value, max_value):
   Returns:
       A tensor.
   """
-  if (isinstance(min_value, (int, float)) and
-      isinstance(max_value, (int, float))):
-    if max_value < min_value:
-      max_value = min_value
+  if (isinstance(min_value, (int, float))
+      and isinstance(max_value, (int, float))) and max_value < min_value:
+    max_value = min_value
   if min_value is None:
     min_value = -np.inf
   if max_value is None:
@@ -3040,15 +3009,8 @@ def _broadcast_normalize_batch_in_training(x,
 
   broadcast_mean = tf.reshape(mean, target_shape)
   broadcast_var = tf.reshape(var, target_shape)
-  if gamma is None:
-    broadcast_gamma = None
-  else:
-    broadcast_gamma = tf.reshape(gamma, target_shape)
-  if beta is None:
-    broadcast_beta = None
-  else:
-    broadcast_beta = tf.reshape(beta, target_shape)
-
+  broadcast_gamma = None if gamma is None else tf.reshape(gamma, target_shape)
+  broadcast_beta = None if beta is None else tf.reshape(beta, target_shape)
   normed = tf.nn.batch_normalization(x, broadcast_mean, broadcast_var,
                                   broadcast_beta, broadcast_gamma, epsilon)
   return normed, mean, var
@@ -3106,19 +3068,17 @@ def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
   Returns:
       A tuple length of 3, `(normalized_tensor, mean, variance)`.
   """
-  if ndim(x) == 4 and list(reduction_axes) in [[0, 1, 2], [0, 2, 3]]:
-    if not _has_nchw_support() and list(reduction_axes) == [0, 2, 3]:
-      return _broadcast_normalize_batch_in_training(
-          x, gamma, beta, reduction_axes, epsilon=epsilon)
-    return _fused_normalize_batch_in_training(
+  if ndim(x) != 4 or list(reduction_axes) not in [[0, 1, 2], [0, 2, 3]]:
+    return (_regular_normalize_batch_in_training(
+        x, gamma, beta,
+        reduction_axes, epsilon=epsilon) if sorted(reduction_axes) == list(
+            range(ndim(x)))[:-1] else _broadcast_normalize_batch_in_training(
+                x, gamma, beta, reduction_axes, epsilon=epsilon))
+  if not _has_nchw_support() and list(reduction_axes) == [0, 2, 3]:
+    return _broadcast_normalize_batch_in_training(
         x, gamma, beta, reduction_axes, epsilon=epsilon)
-  else:
-    if sorted(reduction_axes) == list(range(ndim(x)))[:-1]:
-      return _regular_normalize_batch_in_training(
-          x, gamma, beta, reduction_axes, epsilon=epsilon)
-    else:
-      return _broadcast_normalize_batch_in_training(
-          x, gamma, beta, reduction_axes, epsilon=epsilon)
+  return _fused_normalize_batch_in_training(
+      x, gamma, beta, reduction_axes, epsilon=epsilon)
 
 
 @keras_export('keras.backend.batch_normalization')
@@ -3143,43 +3103,43 @@ def batch_normalization(x, mean, var, beta, gamma, axis=-1, epsilon=1e-3):
   Returns:
       A tensor.
   """
-  if ndim(x) == 4:
+  if ndim(x) != 4:
+    return tf.nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
     # The CPU implementation of `fused_batch_norm` only supports NHWC
-    if axis == 1 or axis == -3:
-      tf_data_format = 'NCHW'
-    elif axis == 3 or axis == -1:
-      tf_data_format = 'NHWC'
-    else:
-      tf_data_format = None
+  if axis in [1, -3]:
+    tf_data_format = 'NCHW'
+  elif axis in [3, -1]:
+    tf_data_format = 'NHWC'
+  else:
+    tf_data_format = None
 
-    if (tf_data_format == 'NHWC' or
-        tf_data_format == 'NCHW' and _has_nchw_support()):
-      # The mean / var / beta / gamma tensors may be broadcasted
-      # so they may have extra axes of size 1, which should be squeezed.
-      if ndim(mean) > 1:
-        mean = tf.reshape(mean, [-1])
-      if ndim(var) > 1:
-        var = tf.reshape(var, [-1])
-      if beta is None:
-        beta = zeros_like(mean)
-      elif ndim(beta) > 1:
-        beta = tf.reshape(beta, [-1])
-      if gamma is None:
-        gamma = ones_like(mean)
-      elif ndim(gamma) > 1:
-        gamma = tf.reshape(gamma, [-1])
-    y, _, _ = tf.compat.v1.nn.fused_batch_norm(
-        x,
-        gamma,
-        beta,
-        epsilon=epsilon,
-        mean=mean,
-        variance=var,
-        data_format=tf_data_format,
-        is_training=False
-    )
-    return y
-  return tf.nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
+  if (tf_data_format == 'NHWC' or
+      tf_data_format == 'NCHW' and _has_nchw_support()):
+    # The mean / var / beta / gamma tensors may be broadcasted
+    # so they may have extra axes of size 1, which should be squeezed.
+    if ndim(mean) > 1:
+      mean = tf.reshape(mean, [-1])
+    if ndim(var) > 1:
+      var = tf.reshape(var, [-1])
+    if beta is None:
+      beta = zeros_like(mean)
+    elif ndim(beta) > 1:
+      beta = tf.reshape(beta, [-1])
+    if gamma is None:
+      gamma = ones_like(mean)
+    elif ndim(gamma) > 1:
+      gamma = tf.reshape(gamma, [-1])
+  y, _, _ = tf.compat.v1.nn.fused_batch_norm(
+      x,
+      gamma,
+      beta,
+      epsilon=epsilon,
+      mean=mean,
+      variance=var,
+      data_format=tf_data_format,
+      is_training=False
+  )
+  return y
 
 
 # SHAPE OPERATIONS
@@ -3210,8 +3170,7 @@ def concatenate(tensors, axis=-1):
 
   """
   if axis < 0:
-    rank = ndim(tensors[0])
-    if rank:
+    if rank := ndim(tensors[0]):
       axis %= rank
     else:
       axis = 0
@@ -3314,7 +3273,7 @@ def resize_images(x, height_factor, width_factor, data_format,
   elif data_format == 'channels_last':
     rows, cols = 1, 2
   else:
-    raise ValueError('Invalid `data_format` argument: %s' % (data_format,))
+    raise ValueError(f'Invalid `data_format` argument: {data_format}')
 
   new_shape = x.shape[rows:cols + 1]
   if new_shape.is_fully_defined():
@@ -3372,7 +3331,7 @@ def resize_volumes(x, depth_factor, height_factor, width_factor, data_format):
     output = repeat_elements(output, width_factor, axis=3)
     return output
   else:
-    raise ValueError('Invalid data_format: ' + str(data_format))
+    raise ValueError(f'Invalid data_format: {str(data_format)}')
 
 
 @keras_export('keras.backend.repeat_elements')
@@ -3663,7 +3622,7 @@ def spatial_2d_padding(x, padding=((1, 1), (1, 1)), data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format: ' + str(data_format))
+    raise ValueError(f'Unknown data_format: {str(data_format)}')
 
   if data_format == 'channels_first':
     pattern = [[0, 0], [0, 0], list(padding[0]), list(padding[1])]
@@ -3706,7 +3665,7 @@ def spatial_3d_padding(x, padding=((1, 1), (1, 1), (1, 1)), data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format: ' + str(data_format))
+    raise ValueError(f'Unknown data_format: {str(data_format)}')
 
   if data_format == 'channels_first':
     pattern = [[0, 0], [0, 0], [padding[0][0], padding[0][1]],
@@ -3870,10 +3829,7 @@ def batch_get_value(tensors):
     return [x.numpy() for x in tensors]
   elif tf.inside_function():  # pylint: disable=protected-access
     raise RuntimeError('Cannot get value inside Tensorflow graph function.')
-  if tensors:
-    return get_session(tensors).run(tensors)
-  else:
-    return []
+  return get_session(tensors).run(tensors) if tensors else []
 
 
 @keras_export('keras.backend.set_value')
@@ -4172,10 +4128,9 @@ class GraphExecutionFunction:
                                      dtype=tensor_type.as_numpy_dtype))
 
     if self.feed_dict:
-      for key in sorted(self.feed_dict.keys()):
-        array_vals.append(
-            np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
-
+      array_vals.extend(
+          np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype)
+          for key in sorted(self.feed_dict.keys()))
     # Refresh callable if anything has changed.
     if (self._callable_fn is None or feed_arrays != self._feed_arrays or
         symbol_vals != self._symbol_vals or
